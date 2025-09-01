@@ -1,0 +1,6 @@
+@OxideBrowserBack_HostAddress = http://localhost:5058
+
+GET {{OxideBrowserBack_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
