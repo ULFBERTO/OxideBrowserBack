@@ -15,6 +15,22 @@ namespace OxideBrowserBack.Controllers
             _searchService = searchService;
         }
 
+        /// <summary>
+        /// Búsqueda GET con parámetro p (para uso desde la barra de direcciones del navegador)
+        /// GET /api/search?p=query
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> Search([FromQuery] string? p, [FromQuery] int? maxPages)
+        {
+            if (string.IsNullOrEmpty(p))
+            {
+                return BadRequest("Query parameter 'p' is required.");
+            }
+
+            var results = await _searchService.ProcessSmartSearchAsync(p, maxPages ?? 10);
+            return Ok(results);
+        }
+
         [HttpPost]
         public async Task<IActionResult> SmartSearch([FromBody] SearchRequest request)
         {

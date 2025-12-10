@@ -18,32 +18,55 @@ namespace OxideBrowserBack.Services
 
         public async Task<IEnumerable<IndexedPage>> ProcessSmartSearchAsync(string query, int? maxPages)
         {
-            // If the query is a URL AND it has not been indexed yet, crawl it.
-            if (Uri.IsWellFormedUriString(query, UriKind.Absolute) && !_indexService.UrlExists(query))
-            {
-                await _crawlerService.StartRecursiveCrawlAsync(query, maxPages ?? 10);
-            }
-
-            // Now, determine the actual search term.
+            // 1. Determine the effective search term
             string searchTerm = query;
-            if (Uri.IsWellFormedUriString(query, UriKind.Absolute))
+            bool isUrl = Uri.IsWellFormedUriString(query, UriKind.Absolute);
+
+            if (isUrl)
             {
-                // If the original query was a URL, extract keywords from it for the search.
                 try
                 {
                     var host = new Uri(query).Host;
                     var parts = host.Split('.');
                     if (parts.Length >= 2)
                     {
-                        // Get the part before the TLD (e.g., "youtube" from "www.youtube.com")
                         searchTerm = parts[parts.Length - 2];
                     }
                 }
-                catch { /* Fallback to original query if parsing fails */ }
+                catch { /* Keep original query as search term */ }
             }
 
-            // Perform a standard text search with the determined search term.
-            return _indexService.Search(searchTerm);
+            // 2. Perform initial search
+            var results = _indexService.Search(searchTerm);
+            if (results.Any())
+            {
+                return results;
+            }
+
+            // 3. If no results found, attempt to crawl
+            string urlToCrawl = null;
+
+            if (isUrl)
+            {
+                urlToCrawl = query;
+            }
+            else
+            {
+                // Fallback: Construct a URL from the query (e.g. "Hola" -> "https://www.hola.com")
+                var sanitized = query.Trim().Replace(" ", "");
+                urlToCrawl = $"https://www.{sanitized}.com";
+            }
+
+            if (!string.IsNullOrEmpty(urlToCrawl) && Uri.IsWellFormedUriString(urlToCrawl, UriKind.Absolute))
+            {
+                // Crawl the constructed or provided URL
+                await _crawlerService.StartRecursiveCrawlAsync(urlToCrawl, maxPages ?? 10);
+
+                // 4. Search again after crawling
+                return _indexService.Search(searchTerm);
+            }
+
+            return Enumerable.Empty<IndexedPage>();
         }
 
         public IEnumerable<IndexedPage> GetAll()

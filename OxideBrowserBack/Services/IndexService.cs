@@ -30,6 +30,8 @@ namespace OxideBrowserBack.Services
             _termFrequencies.EnsureIndex(x => x.Term);
         }
 
+        private readonly PorterStemmer _stemmer = new PorterStemmer();
+
         public void AddPageToIndex(CrawledPage page)
         {
             if (_pages.Exists(x => x.Url == page.Url))
@@ -37,19 +39,20 @@ namespace OxideBrowserBack.Services
                 return;
             }
 
+            // 1. Tokenize and count (now using Stemmer)
+            var fullText = $"{page.Title} {page.Content}";
+            var wordCounts = TokenizeAndCount(fullText);
+            
             var newPage = new IndexedPage
             {
                 Url = page.Url,
                 Title = page.Title,
-                Content = page.Content
+                Content = page.Content,
+                WordCount = wordCounts.Values.Sum() // Store effective length
             };
 
-            // 1. Insert the page to get its ID
+            // 2. Insert the page
             var newPageId = _pages.Insert(newPage).AsInt32;
-
-            // 2. Tokenize and count word frequencies
-            var fullText = $"{page.Title} {page.Content}";
-            var wordCounts = TokenizeAndCount(fullText);
 
             // 3. Store term frequencies
             var newFrequencies = new List<TermFrequency>();
@@ -73,7 +76,6 @@ namespace OxideBrowserBack.Services
         {
             var wordCounts = new Dictionary<string, int>();
             
-            // Split text into words using regex, removing punctuation
             var words = Regex.Split(text.ToLower(), @"\W+");
 
             foreach (var word in words)
@@ -83,33 +85,70 @@ namespace OxideBrowserBack.Services
                     continue;
                 }
 
-                wordCounts.TryGetValue(word, out int currentCount);
-                wordCounts[word] = currentCount + 1;
+                // Apply Stemming
+                var stem = _stemmer.Stem(word);
+
+                wordCounts.TryGetValue(stem, out int currentCount);
+                wordCounts[stem] = currentCount + 1;
             }
             return wordCounts;
         }
 
         public IEnumerable<IndexedPage> Search(string query)
         {
-            var searchTerm = query.ToLower();
-
-            // 1. Find all pages containing the term and order by frequency
-            var rankedPageIds = _termFrequencies.Find(x => x.Term == searchTerm)
-                .OrderByDescending(x => x.Frequency)
-                .Select(x => x.PageId)
-                .ToList();
+            // BM25 Constants
+            const double k1 = 1.2;
+            const double b = 0.75;
             
-            if (!rankedPageIds.Any())
+            // 1. Process Query
+            var queryTerms = TokenizeAndCount(query).Keys.ToList();
+            if (!queryTerms.Any()) return Enumerable.Empty<IndexedPage>();
+
+            // 2. Gather Stats
+            var totalDocs = _pages.Count();
+            if (totalDocs == 0) return Enumerable.Empty<IndexedPage>();
+            
+            // Calculate avgdl efficiently (simplistic average for now)
+            // ideally cached, but query is fast enough for prototype
+            var allPages = _pages.FindAll().ToList(); 
+            var avgdl = allPages.Average(p => p.WordCount);
+            if (avgdl == 0) avgdl = 1;
+
+            // 3. Score Documents
+            var docScores = new Dictionary<int, double>();
+
+            foreach (var term in queryTerms)
             {
-                return Enumerable.Empty<IndexedPage>();
+                var tfList = _termFrequencies.Find(x => x.Term == term).ToList();
+                var docCountWithTerm = tfList.Count;
+                
+                // IDF Calculation
+                var idf = Math.Log((totalDocs - docCountWithTerm + 0.5) / (docCountWithTerm + 0.5) + 1);
+
+                foreach (var tf in tfList)
+                {
+                    var page = allPages.FirstOrDefault(p => p.Id == tf.PageId);
+                    if (page == null) continue;
+
+                    var freq = tf.Frequency;
+                    var docLen = page.WordCount;
+
+                    // BM25 Score component
+                    var num = freq * (k1 + 1);
+                    var den = freq + k1 * (1 - b + b * (docLen / avgdl));
+                    var score = idf * (num / den);
+
+                    if (!docScores.ContainsKey(page.Id)) docScores[page.Id] = 0;
+                    docScores[page.Id] += score;
+                }
             }
 
-            // 2. Retrieve the page details for the ranked IDs
-            var pages = _pages.Find(p => rankedPageIds.Contains(p.Id));
-
-            // 3. Order the final results according to the ranking
-            // This is necessary because FindByIds doesn't preserve the order of the IDs
-            return pages.OrderBy(p => rankedPageIds.IndexOf(p.Id));
+            // 4. Retrieve & Rank
+            var rankedIds = docScores.OrderByDescending(x => x.Value).Select(x => x.Key).ToList();
+            
+            // Return actual page objects in order
+            // Note: FindByIds might imply O(N) or lose order, so we explicitly map
+            return rankedIds.Select(id => allPages.First(p => p.Id == id));
         }
 
         public bool UrlExists(string url)

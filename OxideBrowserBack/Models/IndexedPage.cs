@@ -6,6 +6,7 @@ namespace OxideBrowserBack.Models
         public required string Url { get; set; }
         public required string Title { get; set; }
         public required string Content { get; set; }
+        public int WordCount { get; set; }
     }
 }
  

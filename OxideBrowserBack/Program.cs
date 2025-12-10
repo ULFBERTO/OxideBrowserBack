@@ -10,19 +10,23 @@ builder.Services.AddCors(options =>
     options.AddPolicy(name: MyAllowSpecificOrigins,
                       policy =>
                       {
-                          policy.WithOrigins("http://localhost:4200")
+                          policy.WithOrigins("http://localhost:4200", "http://localhost:4201", "http://127.0.0.1:4200")
                                 .AllowAnyHeader()
                                 .AllowAnyMethod();
                       });
 });
 
+// Register HttpClient factory
+builder.Services.AddHttpClient();
+
 // Register custom services for the search engine
 builder.Services.AddSingleton<IndexService>();
 builder.Services.AddScoped<SearchService>();
 builder.Services.AddScoped<CrawlerService>();
+builder.Services.AddScoped<ContentService>();
+builder.Services.AddScoped<AiService>();
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -34,8 +38,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-// app.UseHttpsRedirection();
 
 app.UseCors(MyAllowSpecificOrigins);
 
