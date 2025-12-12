@@ -44,7 +44,7 @@ namespace OxideBrowserBack.Services
             }
 
             // 3. If no results found, attempt to crawl
-            string urlToCrawl = null;
+            string? urlToCrawl = null;
 
             if (isUrl)
             {

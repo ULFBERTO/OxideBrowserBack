@@ -52,3 +52,25 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Visual Studio files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Publish profiles
+Properties/PublishProfiles/
+*.pubxml
+*.publishproj
+
+# dotnet tool config
+.config/
+
+# Windows files
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
