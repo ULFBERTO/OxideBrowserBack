@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using OxideBrowserBack.Data;
 using OxideBrowserBack.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,11 +12,15 @@ builder.Services.AddCors(options =>
     options.AddPolicy(name: MyAllowSpecificOrigins,
                       policy =>
                       {
-                          policy.WithOrigins("http://localhost:4200", "http://localhost:4201", "http://127.0.0.1:4200")
+                          policy.WithOrigins("https://www.oxidebrowserback.somee.com", "https://oxide-browser.vercel.app", "http://localhost:4200", "http://localhost:4201", "http://127.0.0.1:4200", "http://localhost:5173", "https://port-folio-mp-9vsr.vercel.app")
                                 .AllowAnyHeader()
                                 .AllowAnyMethod();
                       });
 });
+
+// Add Entity Framework with SQL Server
+builder.Services.AddDbContext<PortfolioDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("PortfolioDb")));
 
 // Register HttpClient factory
 builder.Services.AddHttpClient();
