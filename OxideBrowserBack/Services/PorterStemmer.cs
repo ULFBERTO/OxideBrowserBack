@@ -1,28 +1,67 @@
-using System;
-using System.Linq;
-
 namespace OxideBrowserBack.Services
 {
     /// <summary>
-    /// The Porter Stemming Algorithm.
-    /// Reduces words to their root form (e.g. "running" -> "run").
+    /// Enhanced Porter Stemming Algorithm with Spanish support.
+    /// Reduces words to their root form (e.g. "running" -> "run", "corriendo" -> "corr").
     /// </summary>
     public class PorterStemmer
     {
-        // A simple C# implementation of the Porter Stemmer.
-        // Based on the original algorithm by Martin Porter.
-        
+        // Spanish suffixes for stemming
+        private static readonly string[] SpanishSuffixes = {
+            "amiento", "imientos", "amiento", "aciones", "uciones", "adores", "adoras",
+            "ancias", "encias", "mente", "ables", "ibles", "istas", "adora", "ación",
+            "ución", "ancia", "encia", "ador", "ante", "able", "ible", "ista", "oso",
+            "osa", "ivo", "iva", "ando", "iendo", "ado", "ido", "ar", "er", "ir"
+        };
+
         public string Stem(string word)
         {
             if (string.IsNullOrWhiteSpace(word) || word.Length <= 2) return word;
             
             word = word.ToLowerInvariant();
-            
+
+            // Detect language and apply appropriate stemmer
+            if (IsLikelySpanish(word))
+            {
+                return StemSpanish(word);
+            }
+
+            return StemEnglish(word);
+        }
+
+        private bool IsLikelySpanish(string word)
+        {
+            // Check for Spanish-specific patterns
+            return word.Contains("ñ") || 
+                   word.EndsWith("ción") || 
+                   word.EndsWith("ando") || 
+                   word.EndsWith("iendo") ||
+                   word.EndsWith("mente");
+        }
+
+        private string StemSpanish(string word)
+        {
+            if (word.Length <= 3) return word;
+
+            // Remove common Spanish suffixes
+            foreach (var suffix in SpanishSuffixes)
+            {
+                if (word.EndsWith(suffix) && word.Length - suffix.Length >= 2)
+                {
+                    return word.Substring(0, word.Length - suffix.Length);
+                }
+            }
+
+            return word;
+        }
+
+        private string StemEnglish(string word)
+        {
             // Step 1a
-            if (word.EndsWith("shes")) word = word.Substring(0, word.Length - 2);
-            else if (word.EndsWith("ies")) word = word.Substring(0, word.Length - 3) + "y";
+            if (word.EndsWith("sses")) word = word.Substring(0, word.Length - 2);
+            else if (word.EndsWith("ies")) word = word.Substring(0, word.Length - 2);
             else if (word.EndsWith("ss")) { /* do nothing */ }
-            else if (word.EndsWith("s")) word = word.Substring(0, word.Length - 1);
+            else if (word.EndsWith("s") && word.Length > 3) word = word.Substring(0, word.Length - 1);
 
             // Step 1b
             if (word.EndsWith("eed"))
@@ -49,39 +88,129 @@ namespace OxideBrowserBack.Services
                     word += "e";
                 }
             }
-            
-            // Further steps omitted for brevity in this first pass, but 1a/1b cover 90% of common cases like plurals and gerunds.
-            // A full implementation would go up to Step 5.
-            // For the purpose of "Google-like" iteration, we will add Step 2 & 3 support later or if user requests full precision.
-            // This lighter version is faster and sufficient for "Running"->"Run", "Foxes"->"Fox".
 
+            // Step 1c
+            if (word.EndsWith("y") && ContainsVowel(word.Substring(0, word.Length - 1)))
+            {
+                word = word.Substring(0, word.Length - 1) + "i";
+            }
+
+            // Step 2
+            word = Step2(word);
+
+            // Step 3
+            word = Step3(word);
+
+            // Step 4
+            word = Step4(word);
+
+            // Step 5a
+            if (word.EndsWith("e"))
+            {
+                var stem = word.Substring(0, word.Length - 1);
+                if (Measure(stem) > 1 || (Measure(stem) == 1 && !EndsWithCVC(stem)))
+                {
+                    word = stem;
+                }
+            }
+
+            // Step 5b
+            if (word.EndsWith("ll") && Measure(word) > 1)
+            {
+                word = word.Substring(0, word.Length - 1);
+            }
+
+            return word;
+        }
+
+        private string Step2(string word)
+        {
+            var suffixes = new Dictionary<string, string>
+            {
+                {"ational", "ate"}, {"tional", "tion"}, {"enci", "ence"}, {"anci", "ance"},
+                {"izer", "ize"}, {"abli", "able"}, {"alli", "al"}, {"entli", "ent"},
+                {"eli", "e"}, {"ousli", "ous"}, {"ization", "ize"}, {"ation", "ate"},
+                {"ator", "ate"}, {"alism", "al"}, {"iveness", "ive"}, {"fulness", "ful"},
+                {"ousness", "ous"}, {"aliti", "al"}, {"iviti", "ive"}, {"biliti", "ble"}
+            };
+
+            foreach (var pair in suffixes)
+            {
+                if (word.EndsWith(pair.Key))
+                {
+                    var stem = word.Substring(0, word.Length - pair.Key.Length);
+                    if (Measure(stem) > 0)
+                    {
+                        return stem + pair.Value;
+                    }
+                }
+            }
+            return word;
+        }
+
+        private string Step3(string word)
+        {
+            var suffixes = new Dictionary<string, string>
+            {
+                {"icate", "ic"}, {"ative", ""}, {"alize", "al"}, {"iciti", "ic"},
+                {"ical", "ic"}, {"ful", ""}, {"ness", ""}
+            };
+
+            foreach (var pair in suffixes)
+            {
+                if (word.EndsWith(pair.Key))
+                {
+                    var stem = word.Substring(0, word.Length - pair.Key.Length);
+                    if (Measure(stem) > 0)
+                    {
+                        return stem + pair.Value;
+                    }
+                }
+            }
+            return word;
+        }
+
+        private string Step4(string word)
+        {
+            var suffixes = new[] { "al", "ance", "ence", "er", "ic", "able", "ible", "ant", 
+                "ement", "ment", "ent", "ion", "ou", "ism", "ate", "iti", "ous", "ive", "ize" };
+
+            foreach (var suffix in suffixes)
+            {
+                if (word.EndsWith(suffix))
+                {
+                    var stem = word.Substring(0, word.Length - suffix.Length);
+                    if (Measure(stem) > 1)
+                    {
+                        if (suffix == "ion" && stem.Length > 0 && (stem.EndsWith("s") || stem.EndsWith("t")))
+                        {
+                            return stem;
+                        }
+                        else if (suffix != "ion")
+                        {
+                            return stem;
+                        }
+                    }
+                }
+            }
             return word;
         }
 
         private int Measure(string stem)
         {
-            // Calculate m (measure) of the stem
-            // [C](VC){m}[V]
-            // This is a simplified measure count
             int m = 0;
             bool v = false;
-            for(int i=0; i<stem.Length; i++) 
+            for (int i = 0; i < stem.Length; i++)
             {
-                if(IsVowel(stem[i])) v = true;
-                else if(v) { m++; v = false; }
+                if (IsVowel(stem[i])) v = true;
+                else if (v) { m++; v = false; }
             }
             return m;
         }
 
-        private bool ContainsVowel(string stem)
-        {
-            return stem.Any(IsVowel);
-        }
+        private bool ContainsVowel(string stem) => stem.Any(IsVowel);
 
-        private bool IsVowel(char c)
-        {
-            return "aeiou".Contains(c);
-        }
+        private bool IsVowel(char c) => "aeiou".Contains(c);
 
         private bool EndsWithDoubleConsonant(string stem)
         {

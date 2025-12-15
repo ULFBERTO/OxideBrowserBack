@@ -27,6 +27,7 @@ builder.Services.AddHttpClient();
 
 // Register custom services for the search engine
 builder.Services.AddSingleton<IndexService>();
+builder.Services.AddSingleton<ContentFilterService>();
 builder.Services.AddScoped<SearchService>();
 builder.Services.AddScoped<CrawlerService>();
 builder.Services.AddScoped<ContentService>();
